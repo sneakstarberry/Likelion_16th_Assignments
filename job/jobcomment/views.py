@@ -1,8 +1,11 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
-from .models import Blog
+from .models import Blog, Comment
 from django.core.paginator import Paginator
-from .form import BlogPost
+from .form import NewBlog, CommentForm
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+from django.contrib import auth
 
 def home(request):
     blogs = Blog.objects
@@ -26,20 +29,95 @@ def create(request):
     return redirect('/jobcomment/'+str(jobcomment.id))
 
 
-def blogpost(request):
-    # 1. 입력된 내용을 처리하는 기능 -> POST
-    # 2. 빈 페이지를 띄워주는 기능 -> GET
-    if request.method == 'POST':
-        form = BlogPost(request.POST)
-        if form.is_valid():
-            post = form.save(commit=False)
-            post.pub_date = timezone.now()
-            post.save()
-            return redirect('home')
-    else:
-        form = BlogPost()
-        return render(request, 'new.html', {'form':form})
 
 def detail(request, blog_id):
     blog_detail = get_object_or_404(Blog, pk = blog_id)
     return render(request, 'detail.html', {'blog': blog_detail})
+
+
+
+def add_comment(request, pk):
+    blog = get_object_or_404(Blog, pk=pk)
+    if request.method == "POST":
+        form = CommentForm(request.POST)
+        if form.is_valid():
+            comment = form.save(commit=False)
+            comment.post = blog
+            comment.save()
+            return redirect('home')
+    else:
+        form = CommentForm()
+    return render(request, 'add_comment.html', {'form': form})
+
+def del_comment(request, pk):
+    comment = get_object_or_404(Comment, pk = pk)
+    comment.delete()
+    return redirect('home')
+
+def edit_comment(request, pk):
+    comment = get_object_or_404(Comment, pk=pk)
+    if request.method == "POST":
+        form = CommentForm(request.POST, instance=comment)
+        if form.is_valid():
+            comment.save()
+            return redirect('home')
+    else:
+        form = CommentForm(instance=comment)
+    return render(request, 'add_comment.html', {'form': form})
+
+@login_required(login_url='/login/')
+def newcreate(request):
+    if request.method == 'POST':
+        form = NewBlog(request.POST)
+        if form.is_valid():
+            post = form.save(commit=False)
+            post.create_date = timezone.now()
+            post.author = request.user
+            post.save()
+            return redirect('home')
+    else:
+        form = NewBlog()
+        return render(request, 'new.html', {'form':form})
+
+@login_required(login_url='/login/')
+def update(request, pk):
+    blog = get_object_or_404(Blog, pk = pk)
+    if request.method == "POST":
+        form = NewBlog(request.POST, instance=blog)
+        if form.is_valid():
+            form.save()
+            return redirect('home')
+    else:
+        form = NewBlog(instance = blog)
+    return render(request, 'new.html', {'form':form})
+
+@login_required(login_url='/login/')
+def delete(request, pk):
+    blog = get_object_or_404(Blog, pk = pk)
+    blog.delete()
+    return redirect('home')
+
+def signup(request):
+    if request.method == 'POST':
+        if request.POST['password1'] == request.POST['password2']:
+            user = User.objects.create_user(request.POST['username'], password=request.POST['password1'])
+            auth.login(request, user)
+            return redirect('home')
+    return render(request, 'signup.html')
+
+def login(request):
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+        user = auth.authenticate(request, username=username, password=password)
+        if user is not None:
+            auth.login(request, user)
+            return redirect('home')
+        else:
+            return render(request, 'login.html', {'error': 'username or password is incorrect.'})
+    else:
+        return render(request, 'login.html')
+
+def logout(request):
+    auth.logout(request)
+    return redirect('home')
